@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import tempfile
 import time
@@ -79,7 +80,7 @@ def save_error_log():
 
 def find_new_jobs_element(driver: webdriver.Chrome) -> int | None:
     """新着案件の数を返す"""
-    pattern = re.compile(r"新着案件[:：]\s*\d+\s*件")
+    pattern = re.compile(r"新着.*\s*\d+\s*件")
     elements = driver.find_elements(By.XPATH, "//*[contains(text(),'新着案件')]")
     for el in elements:
         text = el.text.replace("\u3000", " ")  # 全角スペース→半角スペース
@@ -144,6 +145,7 @@ if __name__ == "__main__":
         logger.info("//////////////////////////////////////////////////////////////")
         input()
         logger.info("監視開始")
+        time.sleep(1)
 
         old_jobs = None
         while True:
@@ -152,6 +154,7 @@ if __name__ == "__main__":
                 new_jobs = WebDriverWait(driver, 10).until(
                     lambda d: find_new_jobs_element(d)
                 )
+                logger.info(f"新着案件数: {new_jobs}件")
 
                 if old_jobs and new_jobs > old_jobs:
                     # 差分を通知
