@@ -3,7 +3,8 @@
 ################################
 ROOM_ID: ""  # ChatWorksのルームIDを入力 例: "1234abcde..."
 API_KEY: ""  # ChatWorkのAPIキーを入力
-
+ID: "" # Money CareerのIDを入力
+PASSWORD: ""  # Money Careerのパスワードを入力
 
 ################################
 ### 任意設定 

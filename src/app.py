@@ -13,6 +13,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 # ロガー設定
 logger = logging.getLogger(__name__)
+
+for handler in logger.handlers:
+    logger.removeHandler(handler)
+
 handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "%(asctime)s (%(levelname)s) %(message)s", datefmt="[%Y/%m/%d %H:%M:%S]"
@@ -81,7 +85,7 @@ def find_new_jobs_element(driver: webdriver.Chrome) -> int | None:
         text = el.text.replace("\u3000", " ")  # 全角スペース→半角スペース
         match = pattern.search(text)
         if match:
-            logger.info(text)
+            # logger.info(text)
             number = re.search(r"\d+", match.group())
             return int(number.group())
     return None
@@ -94,6 +98,8 @@ if __name__ == "__main__":
             settings = yaml.safe_load(f)
         URL = settings["URL"]  # ログインページURL
         ROOM_ID = settings["ROOM_ID"]  # ChatWorkルームID
+        ID = settings["ID"]  # money-careerのID
+        PASS = settings["PASSWORD"]  # money-careerのパスワード
         MESSAGE = settings["MESSAGE"]  # 通知メッセージ
         API_KEY = settings["API_KEY"]  # ChatWork APIキー
         INTERVAL_SEC = settings["INTERVAL"]  # 監視間隔（秒）
@@ -103,31 +109,51 @@ if __name__ == "__main__":
 
     # chrome起動
     options = webdriver.ChromeOptions()
-    options.add_argument("--disable-gpu")
     driver = webdriver.Chrome(options=options)
 
     try:
+        time.sleep(5)
         logger.info("Chrome起動")
         driver.get(URL)
-        input(
-            "/////////////////////////////////////////////////////////////////\n"
-            + "//\n"
-            + "// ユーザー操作待機中\n"
-            + "// 監視対象ページを開いてからEnterキーを押してください...\n"
-            + "//\n"
-            "/////////////////////////////////////////////////////////////////"
+        time.sleep(1)
+
+        logger.info("ログインボタンクリック")
+        button = WebDriverWait(driver, 10).until(
+            lambda d: d.find_element(By.TAG_NAME, "button")
         )
+        button.click()
+
+        logger.info("ID入力")
+        username_input = WebDriverWait(driver, 10).until(
+            lambda d: d.find_element(By.ID, "username")
+        )
+        username_input.clear()
+        username_input.send_keys(ID)
+        logger.info("パスワード入力")
+        password_input = driver.find_element(By.ID, "password")
+        password_input.clear()
+        password_input.send_keys(PASS)
+        logger.info("ログインボタンクリック")
+        submit_button = driver.find_element(By.XPATH, "//button[@type='submit']")
+        submit_button.click()
+
+        logger.info("//////////////////////////////////////////////////////////////")
+        logger.info("// !!!ユーザー操作待機中!!!")
+        logger.info("// 監視対象ページを開いてからEnterキーを押してください")
+        logger.info("// 「監視開始」と表示されない場合、再度押してください")
+        logger.info("//////////////////////////////////////////////////////////////")
+        input()
         logger.info("監視開始")
 
         old_jobs = None
         while True:
             try:
                 # 新着案件数の確認
-                new_jobs = WebDriverWait(driver, 1).until(
+                new_jobs = WebDriverWait(driver, 10).until(
                     lambda d: find_new_jobs_element(d)
                 )
 
-                if old_jobs and new_jobs == old_jobs:
+                if old_jobs and new_jobs > old_jobs:
                     # 差分を通知
                     send_chatwork_message(
                         API_KEY, ROOM_ID, f"{MESSAGE} ({str(new_jobs)}件)"
