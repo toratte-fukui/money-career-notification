@@ -12,3 +12,5 @@ PASSWORD: ""  # Money Careerのパスワードを入力
 INTERVAL: 60  # チェック間隔（秒単位）
 URL: "https://expert.money-career.com/login"  # 最初にアクセスするURL
 MESSAGE: "新着案件があります！"  # 差分検知時に送信するメッセージ
+NEW_JOB_TEXT: "新着案件"  # 新着案件のテキスト
+UPDATE_BUTTON_TEXT: "新規案件を更新"  # 更新ボタンのテキスト
