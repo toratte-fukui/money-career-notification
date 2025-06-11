@@ -9,6 +9,7 @@ import yaml
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 # ロガー設定
@@ -72,18 +73,64 @@ def upload_screenshot_to_chatwork(api_token, room_id):
 
 def save_error_log():
     """エラーメッセージをログファイルに保存"""
-    with open(f"{time.strftime('%Y%m%d%H%M%S_log.txt')}", "w") as f:
+    with open(f"{time.strftime('%Y%m%d%H%M%S_log.txt')}", "w", encoding="utf-8") as f:
         f.write(traceback.format_exc())
     print(traceback.format_exc())
 
 
+def find_element_in_all_iframes(xpath, max_depth=5, current_depth=0):
+    def condition(driver: webdriver.Chrome):
+        if current_depth >= max_depth:
+            return None
+
+        # 現在のフレームで要素を検索
+        try:
+            elem = driver.find_element(By.XPATH, xpath)
+            if elem:
+                return elem
+        except Exception:
+            pass
+
+        # 現在のフレーム内のiframeを取得
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+
+        for iframe in iframes:
+            logger.info(f"探索中のiframe: {iframe.get_attribute('src') or 'N/A'}")
+            try:
+                driver.switch_to.frame(iframe)
+                elem = find_element_in_all_iframes(
+                    driver, xpath, max_depth, current_depth + 1
+                )
+                if elem:
+                    return elem
+            except Exception:
+                logger.error("iframe探索失敗")
+            finally:
+                driver.switch_to.default_content()  # ネスト対応のため、再帰のたびにトップに戻す
+
+        logger.error(f"要素が見つかりませんでした: {xpath} (深さ: {current_depth})")
+        return False
+
+    return condition
+
+
 def find_new_jobs_element(driver: webdriver.Chrome, new_job_text: str) -> int | None:
     """新着案件の数を返す"""
-    # 「新着案件：X件」というテキストを含む要素を探す
-    body_text = driver.find_element(By.TAG_NAME, "body").text
-    with open(f"{time.strftime('logs/%Y%m%d%H%M%S_body_text.txt')}", "w") as f:
-        f.write(body_text)
-    match = re.search(rf"{new_job_text}.*(\d+)件", body_text)
+    body_text = ""
+    try:
+        elem = WebDriverWait(driver, 15, poll_frequency=5).until(
+            find_element_in_all_iframes(f"//p[contains(text(), '{new_job_text}')]")
+        )
+    except Exception:
+        logger.info("XPATHで検索")
+        elem = driver.find_element(
+            By.XPATH,
+            '//*[@id="app"]/div/div/div[1]/div[2]/div[2]/div/div[3]/div[2]/div/div/div/div/div/p',
+        )
+
+    body_text = elem.text
+    logger.info(body_text)
+    match = re.search(rf"{new_job_text}.*(\d+)", body_text)
     if match:
         return int(match.group(1))
     return None
@@ -91,16 +138,26 @@ def find_new_jobs_element(driver: webdriver.Chrome, new_job_text: str) -> int | 
 
 def click_update_button(driver: webdriver.Chrome, update_button_text: str):
     """更新ボタンをクリックする"""
-    elems = driver.find_elements(By.TAG_NAME, "p")
-    for elem in elems:
-        print(f"div.text: {elem.text}")
-        print("---")
-        if update_button_text in elem.text:
-            elem.click()
-            logger.info("「新規案件を更新」ボタンをクリックしました。")
-            return
+    if not update_button_text:
+        raise ValueError("更新ボタンのテキストが指定されていません")
 
-    raise Exception("「新規案件を更新」ボタンの要素が見つかりませんでした")
+    logger.info("「新規案件を更新」ボタンをクリック")
+    elem = None
+    try:
+        elem = WebDriverWait(driver, 15, poll_frequency=5).until(
+            find_element_in_all_iframes(
+                f"//p[contains(text(), '{update_button_text}')]"
+            )
+        )
+    except Exception:
+        logger.info("XPATHで検索")
+        elem = driver.find_element(
+            By.XPATH,
+            '//*[@id="app"]/div/div/div[1]/div[2]/div[2]/div/div[1]/div/button/div/p',
+        )
+
+    elem.click()
+    return
 
 
 if __name__ == "__main__":
@@ -123,11 +180,11 @@ if __name__ == "__main__":
         input("Enterキーを押して終了...")
         exit(1)
 
-    try:
-        # chrome起動
-        options = webdriver.ChromeOptions()
-        driver = webdriver.Chrome(options=options)
+    # chrome起動
+    options = webdriver.ChromeOptions()
+    driver = webdriver.Chrome(options=options)
 
+    try:
         time.sleep(5)
         logger.info("Chrome起動")
         driver.get(URL)
@@ -151,7 +208,7 @@ if __name__ == "__main__":
         password_input.send_keys(PASS)
         logger.info("ログインボタンクリック")
         submit_button = driver.find_element(By.XPATH, "//button[@type='submit']")
-        # submit_button.click()
+        submit_button.click()
 
         logger.info("//////////////////////////////////////////////////////////////")
         logger.info("// !!!ユーザー操作待機中!!!")
@@ -160,16 +217,14 @@ if __name__ == "__main__":
         logger.info("//////////////////////////////////////////////////////////////")
         input()
         logger.info("監視開始")
+
         time.sleep(1)
 
         old_jobs = None
         while True:
             try:
                 # 新着案件数の確認
-                new_jobs = WebDriverWait(driver, 10).until(
-                    lambda d: find_new_jobs_element(d, NEW_JOB_TEXT)
-                )
-                logger.info(f"新着案件: {new_jobs}件")
+                new_jobs = find_new_jobs_element(driver, NEW_JOB_TEXT)
 
                 if old_jobs and new_jobs > old_jobs:
                     logger.info(f"新着案件数が増加: {old_jobs}件 -> {new_jobs}件")
@@ -191,9 +246,16 @@ if __name__ == "__main__":
 
     except Exception as e:
         # エラーをログに保存
-        with open(f"{time.strftime('logs/%Y%m%d%H%M%S_log.txt')}", "w") as f:
+        current_time = time.strftime("%Y%m%d%H%M%S")
+        with open(f"logs/{current_time}_log.txt", "w", encoding="utf-8") as f:
             f.write(traceback.format_exc())
         print(traceback.format_exc())
+
+        with open(f"logs/{current_time}_dom.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+            logger.error(
+                f"エラー発生時のDOM構造をlogs/{current_time}.htmlに保存しました"
+            )
 
         # ChatWorkにエラーメッセージを送信
         send_chatwork_message(
