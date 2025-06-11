@@ -108,7 +108,6 @@ def find_element_in_all_iframes(xpath, max_depth=5, current_depth=0):
             finally:
                 driver.switch_to.default_content()  # ネスト対応のため、再帰のたびにトップに戻す
 
-        logger.error(f"要素が見つかりませんでした: {xpath} (深さ: {current_depth})")
         return False
 
     return condition
@@ -116,9 +115,10 @@ def find_element_in_all_iframes(xpath, max_depth=5, current_depth=0):
 
 def find_new_jobs_element(driver: webdriver.Chrome, new_job_text: str) -> int | None:
     """新着案件の数を返す"""
+    logger.info("新着案件の要素を検索")
     body_text = ""
     try:
-        elem = WebDriverWait(driver, 15, poll_frequency=5).until(
+        elem = WebDriverWait(driver, 5).until(
             find_element_in_all_iframes(f"//p[contains(text(), '{new_job_text}')]")
         )
     except Exception:
@@ -127,6 +127,13 @@ def find_new_jobs_element(driver: webdriver.Chrome, new_job_text: str) -> int | 
             By.XPATH,
             '//*[@id="app"]/div/div/div[1]/div[2]/div[2]/div/div[3]/div[2]/div/div/div/div/div/p',
         )
+
+    try:
+        # 調査用にDOM構造を保存
+        with open("logs/dom.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+    except Exception:
+        pass
 
     body_text = elem.text
     logger.info(body_text)
@@ -144,19 +151,19 @@ def click_update_button(driver: webdriver.Chrome, update_button_text: str):
     logger.info("「新規案件を更新」ボタンをクリック")
     elem = None
     try:
-        elem = WebDriverWait(driver, 15, poll_frequency=5).until(
-            find_element_in_all_iframes(
-                f"//p[contains(text(), '{update_button_text}')]"
+        elem = WebDriverWait(driver, 5).until(
+            driver.find_element(
+                By.XPATH, f"//p[contains(text(), '{update_button_text}')]"
             )
         )
     except Exception:
-        logger.info("XPATHで検索")
         elem = driver.find_element(
             By.XPATH,
             '//*[@id="app"]/div/div/div[1]/div[2]/div[2]/div/div[1]/div/button/div/p',
         )
 
     elem.click()
+    logger.info("クリック成功")
     return
 
 
